@@ -5,6 +5,7 @@ import { assert } from './warn'
 import { getStateKey, setStateKey } from './push-state'
 
 const positionStore = Object.create(null)
+const positionStoreEl = Object.create(null)
 
 export function setupScroll () {
   window.addEventListener('popstate', e => {
@@ -36,7 +37,9 @@ export function handleScroll (
 
   // wait until re-render finishes before scrolling
   router.app.$nextTick(() => {
-    let position = getScrollPosition()
+    let positions = getScrollPosition()
+    let position = positions.position
+    let positionEl = positions.positionEl
     const shouldScroll = behavior(to, from, isPop ? position : null)
     if (!shouldScroll) {
       return
@@ -56,15 +59,27 @@ export function handleScroll (
     if (position) {
       window.scrollTo(position.x, position.y)
     }
+    if (positionEl) {
+      const el = to.matched[0].instances.default.$el.querySelector(to.meta.scrollSelector)
+      el.scrollLeft = positionEl.scrollLeft
+      el.scrollTop = positionEl.scrollTop
+    }
   })
 }
 
-export function saveScrollPosition () {
+export function saveScrollPosition (fromRoute) {
   const key = getStateKey()
   if (key) {
     positionStore[key] = {
       x: window.pageXOffset,
       y: window.pageYOffset
+    }
+    if (fromRoute && fromRoute.meta.scrollSelector) {
+      const el = fromRoute.matched[0].instances.default.$el.querySelector(fromRoute.meta.scrollSelector)
+      positionStoreEl[key] = {
+        scrollLeft: el.scrollLeft,
+        scrollTop: el.scrollTop
+      }
     }
   }
 }
@@ -72,7 +87,10 @@ export function saveScrollPosition () {
 function getScrollPosition (): ?Object {
   const key = getStateKey()
   if (key) {
-    return positionStore[key]
+    return {
+      position: positionStore[key],
+      positionEl: positionStoreEl[key]
+    }
   }
 }
 

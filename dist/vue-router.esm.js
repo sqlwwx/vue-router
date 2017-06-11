@@ -1454,6 +1454,7 @@ function resolveRecordPath (path, record) {
 
 
 var positionStore = Object.create(null);
+var positionStoreEl = Object.create(null);
 
 function setupScroll () {
   window.addEventListener('popstate', function (e) {
@@ -1485,7 +1486,9 @@ function handleScroll (
 
   // wait until re-render finishes before scrolling
   router.app.$nextTick(function () {
-    var position = getScrollPosition();
+    var positions = getScrollPosition();
+    var position = positions.position;
+    var positionEl = positions.positionEl;
     var shouldScroll = behavior(to, from, isPop ? position : null);
     if (!shouldScroll) {
       return
@@ -1505,23 +1508,38 @@ function handleScroll (
     if (position) {
       window.scrollTo(position.x, position.y);
     }
+    if (positionEl) {
+      var el = to.matched[0].instances.default.$el.querySelector(to.meta.scrollSelector);
+      el.scrollLeft = positionEl.scrollLeft;
+      el.scrollTop = positionEl.scrollTop;
+    }
   });
 }
 
-function saveScrollPosition () {
+function saveScrollPosition (fromRoute) {
   var key = getStateKey();
   if (key) {
     positionStore[key] = {
       x: window.pageXOffset,
       y: window.pageYOffset
     };
+    if (fromRoute && fromRoute.meta.scrollSelector) {
+      var el = fromRoute.matched[0].instances.default.$el.querySelector(fromRoute.meta.scrollSelector);
+      positionStoreEl[key] = {
+        scrollLeft: el.scrollLeft,
+        scrollTop: el.scrollTop
+      };
+    }
   }
 }
 
 function getScrollPosition () {
   var key = getStateKey();
   if (key) {
-    return positionStore[key]
+    return {
+      position: positionStore[key],
+      positionEl: positionStoreEl[key]
+    }
   }
 }
 
@@ -1586,8 +1604,8 @@ function setStateKey (key) {
   _key = key;
 }
 
-function pushState (url, replace) {
-  saveScrollPosition();
+function pushState (url, replace, fromRoute) {
+  saveScrollPosition(fromRoute);
   // try...catch the pushState call to get around Safari
   // DOM Exception 18 where it limits to 100 pushState calls
   var history = window.history;
@@ -1603,8 +1621,8 @@ function pushState (url, replace) {
   }
 }
 
-function replaceState (url) {
-  pushState(url, true);
+function replaceState (url, fromRoute) {
+  pushState(url, true, fromRoute);
 }
 
 /*  */
@@ -2056,7 +2074,7 @@ var HTML5History = (function (History$$1) {
     var ref = this;
     var fromRoute = ref.current;
     this.transitionTo(location, function (route) {
-      pushState(cleanPath(this$1.base + route.fullPath));
+      pushState(cleanPath(this$1.base + route.fullPath), undefined, fromRoute);
       handleScroll(this$1.router, route, fromRoute, false);
       onComplete && onComplete(route);
     }, onAbort);
@@ -2068,7 +2086,7 @@ var HTML5History = (function (History$$1) {
     var ref = this;
     var fromRoute = ref.current;
     this.transitionTo(location, function (route) {
-      replaceState(cleanPath(this$1.base + route.fullPath));
+      replaceState(cleanPath(this$1.base + route.fullPath), fromRoute);
       handleScroll(this$1.router, route, fromRoute, false);
       onComplete && onComplete(route);
     }, onAbort);
