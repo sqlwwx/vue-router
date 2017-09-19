@@ -93,7 +93,7 @@ var View = {
       }
     }
 
-    // also regiseter instance in prepatch hook
+    // also register instance in prepatch hook
     // in case the same component instance is reused across different routes
     ;(data.hook || (data.hook = {})).prepatch = function (_, vnode) {
       matched.instances[name] = vnode.componentInstance;
@@ -606,14 +606,14 @@ function cleanPath (path) {
   return path.replace(/\/\//g, '/')
 }
 
-var index$1 = Array.isArray || function (arr) {
+var isarray = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
 /**
  * Expose `pathToRegexp`.
  */
-var index = pathToRegexp;
+var pathToRegexp_1 = pathToRegexp;
 var parse_1 = parse;
 var compile_1 = compile;
 var tokensToFunction_1 = tokensToFunction;
@@ -790,7 +790,7 @@ function tokensToFunction (tokens) {
         }
       }
 
-      if (index$1(value)) {
+      if (isarray(value)) {
         if (!token.repeat) {
           throw new TypeError('Expected "' + token.name + '" to not repeat, but received `' + JSON.stringify(value) + '`')
         }
@@ -941,7 +941,7 @@ function stringToRegexp (path, keys, options) {
  * @return {!RegExp}
  */
 function tokensToRegExp (tokens, keys, options) {
-  if (!index$1(keys)) {
+  if (!isarray(keys)) {
     options = /** @type {!Object} */ (keys || options);
     keys = [];
   }
@@ -1017,7 +1017,7 @@ function tokensToRegExp (tokens, keys, options) {
  * @return {!RegExp}
  */
 function pathToRegexp (path, keys, options) {
-  if (!index$1(keys)) {
+  if (!isarray(keys)) {
     options = /** @type {!Object} */ (keys || options);
     keys = [];
   }
@@ -1028,17 +1028,17 @@ function pathToRegexp (path, keys, options) {
     return regexpToRegexp(path, /** @type {!Array} */ (keys))
   }
 
-  if (index$1(path)) {
+  if (isarray(path)) {
     return arrayToRegexp(/** @type {!Array} */ (path), /** @type {!Array} */ (keys), options)
   }
 
   return stringToRegexp(/** @type {string} */ (path), /** @type {!Array} */ (keys), options)
 }
 
-index.parse = parse_1;
-index.compile = compile_1;
-index.tokensToFunction = tokensToFunction_1;
-index.tokensToRegExp = tokensToRegExp_1;
+pathToRegexp_1.parse = parse_1;
+pathToRegexp_1.compile = compile_1;
+pathToRegexp_1.tokensToFunction = tokensToFunction_1;
+pathToRegexp_1.tokensToRegExp = tokensToRegExp_1;
 
 /*  */
 
@@ -1052,7 +1052,7 @@ function fillParams (
   try {
     var filler =
       regexpCompileCache[path] ||
-      (regexpCompileCache[path] = index.compile(path));
+      (regexpCompileCache[path] = pathToRegexp_1.compile(path));
     return filler(params || {}, { pretty: true })
   } catch (e) {
     {
@@ -1114,8 +1114,12 @@ function addRouteRecord (
     );
   }
 
-  var normalizedPath = normalizePath(path, parent);
   var pathToRegexpOptions = route.pathToRegexpOptions || {};
+  var normalizedPath = normalizePath(
+    path,
+    parent,
+    pathToRegexpOptions.strict
+  );
 
   if (typeof route.caseSensitive === 'boolean') {
     pathToRegexpOptions.sensitive = route.caseSensitive;
@@ -1203,7 +1207,7 @@ function addRouteRecord (
 }
 
 function compileRouteRegex (path, pathToRegexpOptions) {
-  var regex = index(path, [], pathToRegexpOptions);
+  var regex = pathToRegexp_1(path, [], pathToRegexpOptions);
   {
     var keys = {};
     regex.keys.forEach(function (key) {
@@ -1214,8 +1218,8 @@ function compileRouteRegex (path, pathToRegexpOptions) {
   return regex
 }
 
-function normalizePath (path, parent) {
-  path = path.replace(/\/$/, '');
+function normalizePath (path, parent, strict) {
+  if (!strict) { path = path.replace(/\/$/, ''); }
   if (path[0] === '/') { return path }
   if (parent == null) { return path }
   return cleanPath(((parent.path) + "/" + path))
@@ -1485,6 +1489,7 @@ function resolveRecordPath (path, record) {
 
 
 var positionStore = Object.create(null);
+var positionStoreEl = Object.create(null);
 
 function setupScroll () {
   window.addEventListener('popstate', function (e) {
@@ -1516,7 +1521,9 @@ function handleScroll (
 
   // wait until re-render finishes before scrolling
   router.app.$nextTick(function () {
-    var position = getScrollPosition();
+    var positions = getScrollPosition();
+    var position = positions.position;
+    var positionEl = positions.positionEl;
     var shouldScroll = behavior(to, from, isPop ? position : null);
     if (!shouldScroll) {
       return
@@ -1538,23 +1545,38 @@ function handleScroll (
     if (position) {
       window.scrollTo(position.x, position.y);
     }
+    if (positionEl) {
+      var el$1 = to.matched[0].instances.default.$el.querySelector(to.meta.scrollSelector);
+      el$1.scrollLeft = positionEl.scrollLeft;
+      el$1.scrollTop = positionEl.scrollTop;
+    }
   });
 }
 
-function saveScrollPosition () {
+function saveScrollPosition (fromRoute) {
   var key = getStateKey();
   if (key) {
     positionStore[key] = {
       x: window.pageXOffset,
       y: window.pageYOffset
     };
+    if (fromRoute && fromRoute.meta.scrollSelector) {
+      var el = fromRoute.matched[0].instances.default.$el.querySelector(fromRoute.meta.scrollSelector);
+      positionStoreEl[key] = {
+        scrollLeft: el.scrollLeft,
+        scrollTop: el.scrollTop
+      };
+    }
   }
 }
 
 function getScrollPosition () {
   var key = getStateKey();
   if (key) {
-    return positionStore[key]
+    return {
+      position: positionStore[key],
+      positionEl: positionStoreEl[key]
+    }
   }
 }
 
@@ -1626,8 +1648,8 @@ function setStateKey (key) {
   _key = key;
 }
 
-function pushState (url, replace) {
-  saveScrollPosition();
+function pushState (url, replace, fromRoute) {
+  saveScrollPosition(fromRoute);
   // try...catch the pushState call to get around Safari
   // DOM Exception 18 where it limits to 100 pushState calls
   var history = window.history;
@@ -1643,8 +1665,8 @@ function pushState (url, replace) {
   }
 }
 
-function replaceState (url) {
-  pushState(url, true);
+function replaceState (url, fromRoute) {
+  pushState(url, true, fromRoute);
 }
 
 /*  */
@@ -2103,7 +2125,7 @@ var HTML5History = (function (History$$1) {
     var ref = this;
     var fromRoute = ref.current;
     this.transitionTo(location, function (route) {
-      pushState(cleanPath(this$1.base + route.fullPath));
+      pushState(cleanPath(this$1.base + route.fullPath), undefined, fromRoute);
       handleScroll(this$1.router, route, fromRoute, false);
       onComplete && onComplete(route);
     }, onAbort);
@@ -2115,7 +2137,7 @@ var HTML5History = (function (History$$1) {
     var ref = this;
     var fromRoute = ref.current;
     this.transitionTo(location, function (route) {
-      replaceState(cleanPath(this$1.base + route.fullPath));
+      replaceState(cleanPath(this$1.base + route.fullPath), fromRoute);
       handleScroll(this$1.router, route, fromRoute, false);
       onComplete && onComplete(route);
     }, onAbort);
